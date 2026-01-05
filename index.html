@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>شركة بريهه | تذاكر وتسجيل</title>
+  <title>شركة بريهه | نظام تذاكر متعدد الفعاليات</title>
 
   <style>
     body{margin:0;font-family:Arial;background:#0b1220;color:#fff}
@@ -18,7 +18,7 @@
     button{width:100%;padding:12px;border-radius:12px;border:0;background:#fff;color:#000;font-weight:700;cursor:pointer;margin-top:12px}
     button:disabled{opacity:.5;cursor:not-allowed}
     .hint{font-size:13px;opacity:.75;line-height:1.7}
-    .seats{display:grid;grid-template-columns:repeat(10,1fr);gap:8px;margin-top:12px}
+    .seats{display:grid;grid-template-columns:repeat(var(--cols),1fr);gap:8px;margin-top:12px}
     .seat{padding:10px 0;border-radius:10px;text-align:center;font-size:12px;border:1px solid rgba(255,255,255,.18);background:rgba(0,0,0,.22);cursor:pointer;user-select:none}
     .seat.selected{outline:2px solid #fff}
     .seat.booked{opacity:.35;cursor:not-allowed;text-decoration:line-through}
@@ -28,21 +28,35 @@
     .qrBox{margin-top:12px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
     #qrcode{background:#fff;border-radius:14px;padding:10px}
     .miniBtn{background:transparent;color:#fff;border:1px solid rgba(255,255,255,.2)}
+    .topGrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    @media (max-width:900px){.topGrid{grid-template-columns:1fr}}
   </style>
 </head>
 
 <body>
   <header>
     <div class="brand">شركة بريهه</div>
-    <div class="hint">نظام تذاكر + تسجيل + حجز مقاعد + QR (نسخة MVP على GitHub Pages)</div>
+    <div class="hint">نظام تذاكر + تسجيل + حجز مقاعد + QR (Multi-Event MVP)</div>
   </header>
 
   <div class="wrap">
     <div class="grid">
 
+      <!-- التسجيل -->
       <div class="card">
         <h2 style="margin:0 0 8px;">التسجيل</h2>
-        <div class="hint">املأ البيانات ثم اختر نوع التذكرة والمقعد، وبعدها يظهر لك QR Code للتذكرة.</div>
+        <div class="hint">اختر الايفنت أولاً، بعدها أنواع التذاكر والمقاعد تتغير حسب الايفنت.</div>
+
+        <div class="topGrid">
+          <div>
+            <label>اختيار الايفنت</label>
+            <select id="eventSelect"></select>
+          </div>
+          <div>
+            <label>نوع التذكرة</label>
+            <select id="ticket"></select>
+          </div>
+        </div>
 
         <label>الاسم الكامل</label>
         <input id="name" placeholder="مثال: يزيد المهنا" />
@@ -53,14 +67,6 @@
         <label>البريد الإلكتروني</label>
         <input id="email" placeholder="name@email.com" />
 
-        <label>نوع التذكرة</label>
-        <select id="ticket">
-          <option value="">اختر</option>
-          <option value="VIP">VIP</option>
-          <option value="Regular">Regular</option>
-          <option value="Student">Student</option>
-        </select>
-
         <button id="confirmBtn" disabled>تأكيد الحجز وإصدار QR</button>
         <button id="clearBtn" class="miniBtn" type="button">مسح البيانات</button>
 
@@ -70,7 +76,7 @@
           <div>
             <div class="hint" style="margin-bottom:6px;">QR Code للتذكرة</div>
             <div id="qrcode"></div>
-            <div class="hint" style="margin-top:8px;">افحصه بالجوال أو اطبعه على البادج.</div>
+            <div class="hint" style="margin-top:8px;">افحصه بالجوال أو اطبعه.</div>
           </div>
           <div class="hint">
             محتوى الـ QR (JSON):<br>
@@ -79,15 +85,16 @@
         </div>
 
         <div class="hint" style="margin-top:12px;">
-          ملاحظة: هذه نسخة تجريبية. للحل الاحترافي نضيف قاعدة بيانات + منع تعارض المقاعد + إرسال إيميل تلقائي.
+          ملاحظة: هذه نسخة MVP بدون قاعدة بيانات. (النسخة الاحترافية: حفظ حجوزات + Lock للمقاعد + Scan QR)
         </div>
       </div>
 
+      <!-- المقاعد -->
       <div class="card">
         <h2 style="margin:0 0 8px;">حجز المقعد</h2>
-        <div class="hint">اختر مقعدًا واحدًا. (في النسخة الاحترافية يكون فيه Lock للمقاعد لحظيًا)</div>
+        <div class="hint" id="seatHint">اختر مقعدًا واحدًا.</div>
 
-        <div class="rowTitle">القاعة (10×5) — مثال</div>
+        <div class="rowTitle" id="hallTitle">القاعة — مثال</div>
         <div id="seats" class="seats"></div>
 
         <div class="hint" style="margin-top:12px;">
@@ -100,10 +107,36 @@
     </div>
   </div>
 
-  <!-- QRCode.js (CDN) -->
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 
 <script>
+  // ====== 1) تعريف الايفنتات هنا ======
+  // غيّر/زود الايفنتات براحتك
+  const EVENTS = [
+    {
+      id: "learn2024",
+      name: "LEARN 2024",
+      tickets: ["VIP", "Regular", "Student"],
+      hall: { rows: 5, cols: 10, label: "قاعة LEARN (5×10)" },
+      booked: ["A3","A4","B7","C2","D10"]
+    },
+    {
+      id: "conf2026",
+      name: "InGate Conference 2026",
+      tickets: ["VIP", "Regular"],
+      hall: { rows: 8, cols: 12, label: "قاعة المؤتمر (8×12)" },
+      booked: ["A1","A2","A3","B5","C6","D7"]
+    },
+    {
+      id: "workshop",
+      name: "Workshop Day",
+      tickets: ["Regular"],
+      hall: { rows: 4, cols: 8, label: "قاعة الورشة (4×8)" },
+      booked: ["B2","B3"]
+    }
+  ];
+
+  // ====== عناصر الصفحة ======
   const seatsEl = document.getElementById('seats');
   const chosenEl = document.getElementById('chosen');
   const confirmBtn = document.getElementById('confirmBtn');
@@ -119,46 +152,95 @@
   const phoneEl = document.getElementById('phone');
   const emailEl = document.getElementById('email');
   const ticketEl = document.getElementById('ticket');
+  const eventSelect = document.getElementById('eventSelect');
+
+  const hallTitle = document.getElementById('hallTitle');
+  const seatHint = document.getElementById('seatHint');
 
   let selectedSeat = null;
   let qr = null;
 
-  // مقاعد محجوزة تجريبياً
-  const booked = new Set(["A3","A4","B7","C2","D10"]);
+  // current event state
+  let currentEvent = EVENTS[0];
+  let bookedSet = new Set(currentEvent.booked);
 
-  function seatId(i){
-    const row = String.fromCharCode(65 + Math.floor(i/10)); // A-E
-    const col = (i % 10) + 1; // 1-10
+  // ====== helpers ======
+  function escapeHtml(str){
+    return (str||"").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+  }
+  function resetQR(){
+    qrWrap.innerHTML = "";
+    qrSection.style.display = "none";
+    qrDataEl.textContent = "";
+    qr = null;
+  }
+  function bookingId(prefix){
+    const part = Math.random().toString(36).slice(2,8).toUpperCase();
+    const time = Date.now().toString().slice(-5);
+    return `${prefix}-${part}-${time}`;
+  }
+  function seatId(i, cols){
+    const row = String.fromCharCode(65 + Math.floor(i/cols)); // A,B,C...
+    const col = (i % cols) + 1;
     return `${row}${col}`;
   }
 
+  // ====== render event dropdown + tickets ======
+  function renderEvents(){
+    eventSelect.innerHTML = "";
+    EVENTS.forEach(ev => {
+      const opt = document.createElement("option");
+      opt.value = ev.id;
+      opt.textContent = ev.name;
+      eventSelect.appendChild(opt);
+    });
+    eventSelect.value = currentEvent.id;
+  }
+
+  function renderTickets(){
+    ticketEl.innerHTML = '<option value="">اختر</option>';
+    currentEvent.tickets.forEach(t => {
+      const opt = document.createElement("option");
+      opt.value = t;
+      opt.textContent = t;
+      ticketEl.appendChild(opt);
+    });
+    ticketEl.value = "";
+  }
+
+  // ====== render seats for current event ======
   function renderSeats(){
+    const { rows, cols, label } = currentEvent.hall;
+
+    hallTitle.textContent = label;
+    seatHint.textContent = "اختر مقعدًا واحدًا (حسب الايفنت المختار).";
+
+    // set CSS columns
+    seatsEl.style.setProperty("--cols", cols);
+
     seatsEl.innerHTML = "";
-    for(let i=0;i<50;i++){
-      const id = seatId(i);
+    const total = rows * cols;
+
+    for(let i=0;i<total;i++){
+      const id = seatId(i, cols);
       const div = document.createElement('div');
       div.className = "seat";
       div.textContent = id;
 
-      if(booked.has(id)) div.classList.add("booked");
+      if(bookedSet.has(id)) div.classList.add("booked");
       if(selectedSeat === id) div.classList.add("selected");
 
       div.onclick = () => {
-        if(booked.has(id)) return;
+        if(bookedSet.has(id)) return;
         selectedSeat = id;
         chosenEl.textContent = selectedSeat;
         renderSeats();
         validate();
+        resetQR();
       };
 
       seatsEl.appendChild(div);
     }
-  }
-
-  function bookingId(){
-    const part = Math.random().toString(36).slice(2,8).toUpperCase();
-    const time = Date.now().toString().slice(-5);
-    return `BRH-${part}-${time}`;
   }
 
   function validate(){
@@ -172,26 +254,36 @@
     confirmBtn.disabled = !ok;
   }
 
-  function escapeHtml(str){
-    return str.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+  // ====== change event ======
+  function setEventById(id){
+    const found = EVENTS.find(e => e.id === id) || EVENTS[0];
+    currentEvent = found;
+    bookedSet = new Set(currentEvent.booked);
+
+    // reset selections
+    selectedSeat = null;
+    chosenEl.textContent = "—";
+    resultEl.style.display = "none";
+    resetQR();
+
+    renderTickets();
+    renderSeats();
+    validate();
   }
 
-  function resetQR(){
-    qrWrap.innerHTML = "";
-    qrSection.style.display = "none";
-    qrDataEl.textContent = "";
-    qr = null;
-  }
+  // ====== listeners ======
+  eventSelect.addEventListener("change", () => setEventById(eventSelect.value));
 
-  [nameEl, phoneEl, emailEl, ticketEl].forEach(el => el.addEventListener('input', () => { validate(); resetQR(); }));
+  [nameEl, phoneEl, emailEl].forEach(el => el.addEventListener('input', () => { validate(); resetQR(); }));
   ticketEl.addEventListener('change', () => { validate(); resetQR(); });
 
   confirmBtn.onclick = () => {
-    const id = bookingId();
+    const id = bookingId(currentEvent.id.toUpperCase());
 
-    // بيانات التذكرة داخل QR (ممكن تغيرها لأي صيغة)
     const payload = {
       company: "شركة بريهه",
+      eventId: currentEvent.id,
+      eventName: currentEvent.name,
       bookingId: id,
       name: nameEl.value.trim(),
       phone: phoneEl.value.trim(),
@@ -206,22 +298,18 @@
     resultEl.style.display = "block";
     resultEl.innerHTML = `
       ✅ تم تأكيد الحجز وإصدار التذكرة<br><br>
+      الايفنت: <span class="code">${escapeHtml(currentEvent.name)}</span><br>
       رقم الحجز: <span class="code">${id}</span><br>
       الاسم: <span class="code">${escapeHtml(payload.name)}</span><br>
       التذكرة: <span class="code">${payload.ticketType}</span><br>
       المقعد: <span class="code">${payload.seat}</span>
     `;
 
-    // توليد QR
     resetQR();
     qrSection.style.display = "flex";
     qrDataEl.textContent = qrText;
 
-    qr = new QRCode(qrWrap, {
-      text: qrText,
-      width: 180,
-      height: 180
-    });
+    qr = new QRCode(qrWrap, { text: qrText, width: 180, height: 180 });
 
     qrSection.scrollIntoView({behavior:"smooth"});
   };
@@ -242,13 +330,14 @@
     selectedSeat = null;
     chosenEl.textContent = "—";
     resultEl.style.display = "none";
+    resetQR();
     renderSeats();
     validate();
-    resetQR();
   };
 
-  renderSeats();
-  validate();
+  // ====== init ======
+  renderEvents();
+  setEventById(EVENTS[0].id);
 </script>
 </body>
 </html>
